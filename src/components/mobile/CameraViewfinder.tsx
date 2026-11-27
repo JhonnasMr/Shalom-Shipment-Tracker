@@ -96,9 +96,9 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
 
     canvas.toBlob(blob => {
       if (!blob) return;
-      const file = new File([blob], `comprobante_cam_${Date.now()}.png`, { type: 'image/png' });
+      const file = new File([blob], `comprobante_cam_${Date.now()}.jpg`, { type: 'image/jpeg' });
       onCapture(file);
-    }, 'image/png', 0.95);
+    }, 'image/jpeg', 0.85);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

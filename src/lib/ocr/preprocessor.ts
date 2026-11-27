@@ -4,6 +4,7 @@ import { ImagePreprocessResult } from '@/types/ocr';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
 const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15MB
+const MAX_IMAGE_EDGE = 2400;
 
 export class ImagePreprocessor {
   /**
@@ -33,6 +34,12 @@ export class ImagePreprocessor {
     // para maximizar el contraste de caracteres impresos en tickets térmicos
     const processedBuffer = await sharp(inputBuffer)
       .rotate() // auto-rotar según EXIF
+      .resize({
+        width: MAX_IMAGE_EDGE,
+        height: MAX_IMAGE_EDGE,
+        fit: 'inside',
+        withoutEnlargement: true,
+      })
       .grayscale()
       .normalize()
       .sharpen({

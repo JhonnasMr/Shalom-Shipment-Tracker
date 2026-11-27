@@ -9,6 +9,9 @@ import { CheckCircle2, ArrowLeft, RefreshCw, Sparkles, FileText, Plus, ShieldChe
 
 type CaptureState = 'camera' | 'processing' | 'validating' | 'success';
 
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+const MAX_IMAGE_EDGE = 2400;
+
 async function ensureJsonResponse(response: Response, endpoint: string) {
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('application/json') || contentType.includes('+json')) return;
@@ -19,6 +22,41 @@ async function ensureJsonResponse(response: Response, endpoint: string) {
   throw new Error(
     `La API ${endpoint} respondió con ${responseFormat} (HTTP ${response.status}) en lugar de JSON. Revisa que la ruta esté desplegada y los logs del servidor.`
   );
+}
+
+async function optimizeImageForUpload(file: File): Promise<File> {
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    if (file.size <= MAX_UPLOAD_BYTES) return file;
+    throw new Error('La imagen supera 4 MB y el navegador no pudo comprimirla. Selecciona una imagen JPG o toma una nueva foto.');
+  }
+
+  try {
+    const largestEdge = Math.max(bitmap.width, bitmap.height);
+    if (file.size <= MAX_UPLOAD_BYTES && largestEdge <= MAX_IMAGE_EDGE) return file;
+
+    const scale = Math.min(1, MAX_IMAGE_EDGE / largestEdge);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('No se pudo preparar la imagen para subirla');
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+    const baseName = file.name.replace(/\.[^.]+$/, '') || 'boleta';
+    for (const quality of [0.85, 0.75, 0.65]) {
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+      if (blob && blob.size <= MAX_UPLOAD_BYTES) {
+        return new File([blob], `${baseName}.jpg`, { type: 'image/jpeg' });
+      }
+    }
+
+    throw new Error('No se pudo comprimir la imagen por debajo de 4 MB. Prueba con otra foto.');
+  } finally {
+    bitmap.close();
+  }
 }
 
 export default function MobileCapturePage() {
@@ -38,14 +76,17 @@ export default function MobileCapturePage() {
     createdAt: string;
   } | null>(null);
 
-  const handleCapture = async (file: File) => {
-    setCapturedFile(file);
-    const objectUrl = URL.createObjectURL(file);
-    setPreviewUrl(objectUrl);
+  const handleCapture = async (sourceFile: File) => {
     setState('processing');
     setError(null);
 
     try {
+      const file = await optimizeImageForUpload(sourceFile);
+      setCapturedFile(file);
+      const objectUrl = URL.createObjectURL(file);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setPreviewUrl(objectUrl);
+
       const formData = new FormData();
       formData.append('file', file);
 

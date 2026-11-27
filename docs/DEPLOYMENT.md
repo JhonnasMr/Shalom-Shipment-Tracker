@@ -58,6 +58,11 @@ La aplicación está diseñada para ser compatible con entornos Edge y Cloudflar
 
 ---
 
+### Consideraciones para Netlify
+Las funciones síncronas de Netlify tienen límites de ejecución y de payload; las imágenes binarias pueden alcanzar el límite efectivo de tamaño antes de contar el overhead de la petición. El flujo móvil comprime las fotos a un máximo de 4 MB y 2400 px por lado antes de enviarlas, y el preprocesamiento del servidor limita también las dimensiones antes de ejecutar Tesseract.
+
+Si Netlify aún devuelve `504`, revisa los logs de la función. Para probar Tesseract localmente, usa `npm run dev`; si el OCR necesita más tiempo que el permitido por la función síncrona, ejecuta el servicio OCR en un servidor Node de larga duración o usa un proveedor OCR remoto.
+
 ### 5. Despliegue con Docker (Opción Recomendada On-Premise)
 ```dockerfile
 FROM node:20-alpine AS builder

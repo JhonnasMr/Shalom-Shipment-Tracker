@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
+import sharp from 'sharp';
 import { ImagePreprocessor } from '@/lib/ocr/preprocessor';
 
 describe('ImagePreprocessor Unit Tests', () => {
@@ -22,5 +23,21 @@ describe('ImagePreprocessor Unit Tests', () => {
     await expect(
       ImagePreprocessor.preprocess(Buffer.alloc(0), 'image/png')
     ).rejects.toThrow('El archivo de imagen está vacío');
+  });
+
+  it('should downscale large images before OCR', async () => {
+    const rawBuffer = await sharp({
+      create: {
+        width: 3000,
+        height: 2000,
+        channels: 3,
+        background: '#ffffff',
+      },
+    }).png().toBuffer();
+
+    const result = await ImagePreprocessor.preprocess(rawBuffer, 'image/png');
+    const processedMetadata = await sharp(result.buffer).metadata();
+
+    expect(Math.max(processedMetadata.width || 0, processedMetadata.height || 0)).toBeLessThanOrEqual(2400);
   });
 });
