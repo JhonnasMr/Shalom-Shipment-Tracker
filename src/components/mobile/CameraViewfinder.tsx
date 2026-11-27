@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Camera, RefreshCw, Image as ImageIcon, AlertCircle, Sparkles, Check } from 'lucide-react';
 
 interface CameraViewfinderProps {
@@ -13,56 +13,73 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
 
-  const stopStream = useCallback(() => {
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-      setStream(null);
-    }
-  }, [stream]);
-
-  const startCamera = useCallback(async () => {
-    setCameraError(null);
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('La API de cámara no está disponible en este navegador o entorno no seguro (requiere HTTPS o localhost)');
-      }
-
-      // Check available devices
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(d => d.kind === 'videoinput');
-      setHasMultipleCameras(videoDevices.length > 1);
-
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: facingMode },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
-        audio: false,
-      });
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-        await videoRef.current.play();
-      }
-      setStream(mediaStream);
-    } catch (err: any) {
-      console.warn('No se pudo acceder a la cámara en vivo:', err);
-      setCameraError(err.message || 'No se pudo acceder a la cámara');
-    }
-  }, [facingMode]);
-
   useEffect(() => {
-    startCamera();
-    return () => {
-      stopStream();
+    let disposed = false;
+    let mediaStream: MediaStream | null = null;
+
+    const startCamera = async () => {
+      setCameraError(null);
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('La API de cámara no está disponible en este navegador o entorno no seguro (requiere HTTPS o localhost)');
+        }
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        if (disposed) return;
+        const videoDevices = devices.filter(d => d.kind === 'videoinput');
+        setHasMultipleCameras(videoDevices.length > 1);
+
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: false,
+        });
+
+        if (disposed) {
+          mediaStream.getTracks().forEach(track => track.stop());
+          return;
+        }
+
+        const video = videoRef.current;
+        if (!video) {
+          mediaStream.getTracks().forEach(track => track.stop());
+          return;
+        }
+
+        video.srcObject = mediaStream;
+        await video.play();
+      } catch (err: unknown) {
+        if (disposed) return;
+        if (mediaStream) {
+          mediaStream.getTracks().forEach(track => track.stop());
+          if (videoRef.current?.srcObject === mediaStream) {
+            videoRef.current.srcObject = null;
+          }
+        }
+        console.warn('No se pudo acceder a la cámara en vivo:', err);
+        setCameraError(err instanceof Error ? err.message : 'No se pudo acceder a la cámara');
+      }
     };
-  }, [startCamera, stopStream]);
+
+    void startCamera();
+
+    return () => {
+      disposed = true;
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        if (videoRef.current?.srcObject === mediaStream) {
+          videoRef.current.srcObject = null;
+        }
+      }
+    };
+  }, [facingMode]);
 
   const handleCaptureSnapshot = () => {
     if (!videoRef.current || !canvasRef.current) return;
@@ -92,7 +109,6 @@ export function CameraViewfinder({ onCapture, isProcessing = false }: CameraView
   };
 
   const toggleCamera = () => {
-    stopStream();
     setFacingMode(prev => (prev === 'environment' ? 'user' : 'environment'));
   };
 
