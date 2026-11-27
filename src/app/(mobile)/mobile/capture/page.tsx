@@ -9,6 +9,18 @@ import { CheckCircle2, ArrowLeft, RefreshCw, Sparkles, FileText, Plus, ShieldChe
 
 type CaptureState = 'camera' | 'processing' | 'validating' | 'success';
 
+async function ensureJsonResponse(response: Response, endpoint: string) {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json') || contentType.includes('+json')) return;
+
+  const responseBody = await response.text();
+  const responseFormat = responseBody.trimStart().startsWith('<') ? 'HTML' : 'contenido no JSON';
+  console.error(`La API ${endpoint} devolvió ${responseFormat}:`, responseBody.slice(0, 300));
+  throw new Error(
+    `La API ${endpoint} respondió con ${responseFormat} (HTTP ${response.status}) en lugar de JSON. Revisa que la ruta esté desplegada y los logs del servidor.`
+  );
+}
+
 export default function MobileCapturePage() {
   const [state, setState] = useState<CaptureState>('camera');
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
@@ -41,6 +53,7 @@ export default function MobileCapturePage() {
         method: 'POST',
         body: formData,
       });
+      await ensureJsonResponse(res, '/api/ocr/process');
 
       if (!res.ok) {
         const errJson = await res.json();
@@ -83,6 +96,7 @@ export default function MobileCapturePage() {
         method: 'POST',
         body: formData,
       });
+      await ensureJsonResponse(res, '/api/receipts');
 
       if (!res.ok) {
         const errJson = await res.json();
